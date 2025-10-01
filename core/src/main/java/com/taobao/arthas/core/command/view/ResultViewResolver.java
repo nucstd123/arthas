@@ -39,6 +39,7 @@ public class ResultViewResolver {
             //registerView(HistoryView.class);
             registerView(EchoView.class);
             registerView(CatView.class);
+            registerView(Base64View.class);
             registerView(OptionsView.class);
             registerView(SystemPropertyView.class);
             registerView(SystemEnvView.class);
@@ -56,6 +57,7 @@ public class ResultViewResolver {
             registerView(MemoryCompilerView.class);
             registerView(OgnlView.class);
             registerView(RedefineView.class);
+            registerView(RetransformView.class);
             registerView(SearchClassView.class);
             registerView(SearchMethodView.class);
 
@@ -65,6 +67,7 @@ public class ResultViewResolver {
             //monitor2000
             registerView(DashboardView.class);
             registerView(JvmView.class);
+            registerView(MemoryView.class);
             registerView(MBeanView.class);
             registerView(PerfCounterView.class);
             registerView(ThreadView.class);
@@ -75,6 +78,8 @@ public class ResultViewResolver {
             registerView(TimeTunnelView.class);
             registerView(TraceView.class);
             registerView(WatchView.class);
+            registerView(VmToolView.class);
+            registerView(JFRView.class);
 
         } catch (Throwable e) {
             logger.error("register result view failed", e);

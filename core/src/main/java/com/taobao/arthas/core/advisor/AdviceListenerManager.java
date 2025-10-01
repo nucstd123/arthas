@@ -60,32 +60,30 @@ public class AdviceListenerManager {
             @Override
             public void run() {
                 try {
-                    if (adviceListenerMap != null) {
-                        for (Entry<ClassLoader, ClassLoaderAdviceListenerManager> entry : adviceListenerMap.entrySet()) {
-                            ClassLoaderAdviceListenerManager adviceListenerManager = entry.getValue();
-                            synchronized (adviceListenerManager) {
-                                for (Entry<String, List<AdviceListener>> eee : adviceListenerManager.map.entrySet()) {
-                                    List<AdviceListener> listeners = eee.getValue();
-                                    List<AdviceListener> newResult = new ArrayList<AdviceListener>();
-                                    for (AdviceListener listener : listeners) {
-                                        if (listener instanceof ProcessAware) {
-                                            ProcessAware processAware = (ProcessAware) listener;
-                                            Process process = processAware.getProcess();
-                                            if (process == null) {
-                                                continue;
-                                            }
-                                            ExecStatus status = process.status();
-                                            if (!status.equals(ExecStatus.TERMINATED)) {
-                                                newResult.add(listener);
-                                            }
+                    for (Entry<ClassLoader, ClassLoaderAdviceListenerManager> entry : adviceListenerMap.entrySet()) {
+                        ClassLoaderAdviceListenerManager adviceListenerManager = entry.getValue();
+                        synchronized (adviceListenerManager) {
+                            for (Entry<String, List<AdviceListener>> eee : adviceListenerManager.map.entrySet()) {
+                                List<AdviceListener> listeners = eee.getValue();
+                                List<AdviceListener> newResult = new ArrayList<AdviceListener>();
+                                for (AdviceListener listener : listeners) {
+                                    if (listener instanceof ProcessAware) {
+                                        ProcessAware processAware = (ProcessAware) listener;
+                                        Process process = processAware.getProcess();
+                                        if (process == null) {
+                                            continue;
+                                        }
+                                        ExecStatus status = process.status();
+                                        if (!status.equals(ExecStatus.TERMINATED)) {
+                                            newResult.add(listener);
                                         }
                                     }
-
-                                    if (newResult.size() != listeners.size()) {
-                                        adviceListenerManager.map.put(eee.getKey(), newResult);
-                                    }
-
                                 }
+
+                                if (newResult.size() != listeners.size()) {
+                                    adviceListenerManager.map.put(eee.getKey(), newResult);
+                                }
+
                             }
                         }
                     }
@@ -100,7 +98,7 @@ public class AdviceListenerManager {
         }, 3, 3, TimeUnit.SECONDS);
     }
 
-    static private ConcurrentWeakKeyHashMap<ClassLoader, ClassLoaderAdviceListenerManager> adviceListenerMap = new ConcurrentWeakKeyHashMap<ClassLoader, ClassLoaderAdviceListenerManager>();
+    private static final ConcurrentWeakKeyHashMap<ClassLoader, ClassLoaderAdviceListenerManager> adviceListenerMap = new ConcurrentWeakKeyHashMap<ClassLoader, ClassLoaderAdviceListenerManager>();
 
     static class ClassLoaderAdviceListenerManager {
         private ConcurrentHashMap<String, List<AdviceListener>> map = new ConcurrentHashMap<String, List<AdviceListener>>();
@@ -141,17 +139,18 @@ public class AdviceListenerManager {
 
         public void registerTraceAdviceListener(String className, String owner, String methodName, String methodDesc,
                 AdviceListener listener) {
+            synchronized (this) {
+                className = className.replace('/', '.');
+                String key = keyForTrace(className, owner, methodName, methodDesc);
 
-            className = className.replace('/', '.');
-            String key = keyForTrace(className, owner, methodName, methodDesc);
-
-            List<AdviceListener> listeners = map.get(key);
-            if (listeners == null) {
-                listeners = new ArrayList<AdviceListener>();
-                map.put(key, listeners);
-            }
-            if (!listeners.contains(listener)) {
-                listeners.add(listener);
+                List<AdviceListener> listeners = map.get(key);
+                if (listeners == null) {
+                    listeners = new ArrayList<AdviceListener>();
+                    map.put(key, listeners);
+                }
+                if (!listeners.contains(listener)) {
+                    listeners.add(listener);
+                }
             }
         }
 

@@ -1,7 +1,6 @@
 package com.taobao.arthas.core.command.monitor200;
 
 import java.lang.instrument.Instrumentation;
-import java.lang.instrument.UnmodifiableClassException;
 import java.util.Collections;
 import java.util.List;
 
@@ -21,8 +20,11 @@ import com.taobao.arthas.core.shell.handlers.shell.QExitHandler;
 import com.taobao.arthas.core.shell.session.Session;
 import com.taobao.arthas.core.util.Constants;
 import com.taobao.arthas.core.util.LogUtil;
+import com.taobao.arthas.core.util.StringUtils;
 import com.taobao.arthas.core.util.affect.EnhancerAffect;
 import com.taobao.arthas.core.util.matcher.Matcher;
+import com.taobao.arthas.core.view.Ansi;
+import com.taobao.middleware.cli.annotations.DefaultValue;
 import com.taobao.middleware.cli.annotations.Description;
 import com.taobao.middleware.cli.annotations.Option;
 
@@ -35,13 +37,23 @@ public abstract class EnhancerCommand extends AnnotatedCommand {
     protected static final List<String> EMPTY = Collections.emptyList();
     public static final String[] EXPRESS_EXAMPLES = { "params", "returnObj", "throwExp", "target", "clazz", "method",
                                                        "{params,returnObj}", "params[0]" };
+    private String excludeClassPattern;
 
     protected Matcher classNameMatcher;
+    protected Matcher classNameExcludeMatcher;
     protected Matcher methodNameMatcher;
 
     protected long listenerId;
 
     protected boolean verbose;
+
+    protected int maxNumOfMatchedClass;
+
+    @Option(longName = "exclude-class-pattern")
+    @Description("exclude class name pattern, use either '.' or '/' as separator")
+    public void setExcludeClassPattern(String excludeClassPattern) {
+        this.excludeClassPattern = excludeClassPattern;
+    }
 
     @Option(longName = "listenerId")
     @Description("The special listenerId")
@@ -55,12 +67,24 @@ public abstract class EnhancerCommand extends AnnotatedCommand {
         this.verbose = verbose;
     }
 
+    @Option(shortName = "m", longName = "maxMatch")
+    @DefaultValue("50")
+    @Description("The maximum of matched class.")
+    public void setMaxNumOfMatchedClass(int maxNumOfMatchedClass) {
+        this.maxNumOfMatchedClass = maxNumOfMatchedClass;
+    }
+
     /**
      * 类名匹配
      *
      * @return 获取类名匹配
      */
     protected abstract Matcher getClassNameMatcher();
+
+    /**
+     * 排除类名匹配
+     */
+    protected abstract Matcher getClassNameExcludeMatcher();
 
     /**
      * 方法名匹配
@@ -143,10 +167,10 @@ public abstract class EnhancerCommand extends AnnotatedCommand {
                 skipJDKTrace = ((AbstractTraceAdviceListener) listener).getCommand().isSkipJDKTrace();
             }
 
-            Enhancer enhancer = new Enhancer(listener, listener instanceof InvokeTraceable, skipJDKTrace, getClassNameMatcher(), getMethodNameMatcher());
+            Enhancer enhancer = new Enhancer(listener, listener instanceof InvokeTraceable, skipJDKTrace, getClassNameMatcher(), getClassNameExcludeMatcher(), getMethodNameMatcher());
             // 注册通知监听器
             process.register(listener, enhancer);
-            effect = enhancer.enhance(inst);
+            effect = enhancer.enhance(inst, this.maxNumOfMatchedClass);
 
             if (effect.getThrowable() != null) {
                 String msg = "error happens when enhancing class: "+effect.getThrowable().getMessage();
@@ -157,13 +181,27 @@ public abstract class EnhancerCommand extends AnnotatedCommand {
 
             if (effect.cCnt() == 0 || effect.mCnt() == 0) {
                 // no class effected
+                if (!StringUtils.isEmpty(effect.getOverLimitMsg())) {
+                    process.appendResult(new EnhancerModel(effect, false));
+                    process.end(-1);
+                    return;
+                }
                 // might be method code too large
                 process.appendResult(new EnhancerModel(effect, false, "No class or method is affected"));
+
+                String smCommand = Ansi.ansi().fg(Ansi.Color.GREEN).a("sm CLASS_NAME METHOD_NAME").reset().toString();
+                String optionsCommand = Ansi.ansi().fg(Ansi.Color.GREEN).a("options unsafe true").reset().toString();
+                String javaPackage = Ansi.ansi().fg(Ansi.Color.GREEN).a("java.*").reset().toString();
+                String resetCommand = Ansi.ansi().fg(Ansi.Color.GREEN).a("reset CLASS_NAME").reset().toString();
+                String logStr = Ansi.ansi().fg(Ansi.Color.GREEN).a(LogUtil.loggingFile()).reset().toString();
+                String issueStr = Ansi.ansi().fg(Ansi.Color.GREEN).a("https://github.com/alibaba/arthas/issues/47").reset().toString();
                 String msg = "No class or method is affected, try:\n"
-                        + "1. sm CLASS_NAME METHOD_NAME to make sure the method you are tracing actually exists (it might be in your parent class).\n"
-                        + "2. reset CLASS_NAME and try again, your method body might be too large.\n"
-                        + "3. check arthas log: " + LogUtil.loggingFile() + "\n"
-                        + "4. visit https://github.com/alibaba/arthas/issues/47 for more details.";
+                        + "1. Execute `" + smCommand + "` to make sure the method you are tracing actually exists (it might be in your parent class).\n"
+                        + "2. Execute `" + optionsCommand + "`, if you want to enhance the classes under the `" + javaPackage + "` package.\n"
+                        + "3. Execute `" + resetCommand + "` and try again, your method body might be too large.\n"
+                        + "4. Match the constructor, use `<init>`, for example: `watch demo.MathGame <init>`\n"
+                        + "5. Check arthas log: " + logStr + "\n"
+                        + "6. Visit " + issueStr + " for more details.";
                 process.end(-1, msg);
                 return;
             }
@@ -193,5 +231,9 @@ public abstract class EnhancerCommand extends AnnotatedCommand {
 
     protected void completeArgument3(Completion completion) {
         super.complete(completion);
+    }
+
+    public String getExcludeClassPattern() {
+        return excludeClassPattern;
     }
 }

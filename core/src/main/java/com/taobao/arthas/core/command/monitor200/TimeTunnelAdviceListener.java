@@ -12,8 +12,8 @@ import com.taobao.arthas.core.shell.command.CommandProcess;
 import com.taobao.arthas.core.util.LogUtil;
 import com.taobao.arthas.core.util.ThreadLocalWatch;
 
-import java.util.Arrays;
-import java.util.Date;
+import java.time.LocalDateTime;
+import java.util.Collections;
 
 /**
  * @author beiwei30 on 30/11/2016.
@@ -55,7 +55,7 @@ public class TimeTunnelAdviceListener extends AdviceListenerAdapter {
                                Object returnObject) throws Throwable {
         //取出入参时的 args，因为在函数执行过程中 args可能被修改
         args = (Object[]) argsRef.get().pop();
-        afterFinishing(Advice.newForAfterRetuning(loader, clazz, method, target, args, returnObject));
+        afterFinishing(Advice.newForAfterReturning(loader, clazz, method, target, args, returnObject));
     }
 
     @Override
@@ -68,7 +68,7 @@ public class TimeTunnelAdviceListener extends AdviceListenerAdapter {
 
     private void afterFinishing(Advice advice) {
         double cost = threadLocalWatch.costInMillis();
-        TimeFragment timeTunnel = new TimeFragment(advice, new Date(), cost);
+        TimeFragment timeTunnel = new TimeFragment(advice, LocalDateTime.now(), cost);
 
         boolean match = false;
         try {
@@ -88,9 +88,9 @@ public class TimeTunnelAdviceListener extends AdviceListenerAdapter {
 
         int index = command.putTimeTunnel(timeTunnel);
 
-        TimeFragmentVO timeFragmentVO = TimeTunnelCommand.createTimeFragmentVO(index, timeTunnel);
+        TimeFragmentVO timeFragmentVO = TimeTunnelCommand.createTimeFragmentVO(index, timeTunnel, command.getExpand());
         TimeTunnelModel timeTunnelModel = new TimeTunnelModel()
-                .setTimeFragmentList(Arrays.asList(timeFragmentVO))
+                .setTimeFragmentList(Collections.singletonList(timeFragmentVO))
                 .setFirst(isFirst);
         process.appendResult(timeTunnelModel);
 

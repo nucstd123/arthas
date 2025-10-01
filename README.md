@@ -1,13 +1,14 @@
 ## Arthas
 
-![arthas](site/src/site/sphinx/arthas.png)
+![arthas](site/docs/.vuepress/public/images/arthas.png)
 
-[![Build Status](https://travis-ci.org/alibaba/arthas.svg?branch=master)](https://travis-ci.org/alibaba/arthas)
-[![codecov](https://codecov.io/gh/alibaba/arthas/branch/master/graph/badge.svg)](https://codecov.io/gh/alibaba/arthas)
+[![Build Status](https://github.com/alibaba/arthas/workflows/JavaCI/badge.svg)](https://github.com/alibaba/arthas/actions)
+[![download](https://img.shields.io/github/downloads/alibaba/arthas/total?label=Downloads)](https://github.com/alibaba/arthas/releases/latest)
 [![maven](https://img.shields.io/maven-central/v/com.taobao.arthas/arthas-packaging.svg)](https://search.maven.org/search?q=g:com.taobao.arthas)
 ![license](https://img.shields.io/github/license/alibaba/arthas.svg)
 [![Average time to resolve an issue](http://isitmaintained.com/badge/resolution/alibaba/arthas.svg)](http://isitmaintained.com/project/alibaba/arthas "Average time to resolve an issue")
 [![Percentage of issues still open](http://isitmaintained.com/badge/open/alibaba/arthas.svg)](http://isitmaintained.com/project/alibaba/arthas "Percentage of issues still open")
+[![Leaderboard](https://img.shields.io/badge/Arthas-Check%20Your%20Contribution-orange)](https://opensource.alibaba.com/contribution_leaderboard/details?projectValue=arthas)
 
 `Arthas` is a Java Diagnostic tool open sourced by Alibaba.
 
@@ -38,13 +39,14 @@ Arthas was built to solve these issues. A developer can troubleshoot your produc
 * Supports command line interactive mode, with auto-complete feature enabled.
 * Supports telnet and websocket, which enables both local and remote diagnostics with command line and browsers.
 * Supports profiler/Flame Graph
-* Supports JDK 6+.
+* Support get objects in the heap that are instances of the specified class. 
+* Supports JDK 6+ (version 4.x no longer supports JDK 6 and JDK 7).
 * Supports Linux/Mac/Windows.
 
 
-### [Online Tutorials(Recommended)](https://arthas.aliyun.com/doc/arthas-tutorials.html?language=en)
+### Online Tutorials(Recommended)
 
-* [Usages](tutorials/katacoda/README.md#online-tutorial-usages)
+* [View](https://arthas.aliyun.com/doc/arthas-tutorials.html?language=en)
 
 ### Quick start
 
@@ -89,7 +91,7 @@ You can enter its interactive interface by executing `as.sh`, or execute `as.sh 
 * [Docker](https://arthas.aliyun.com/doc/en/docker.html)
 * [Arthas Spring Boot Starter](https://arthas.aliyun.com/doc/en/spring-boot-starter.html)
 * [User cases](https://github.com/alibaba/arthas/issues?q=label%3Auser-case)
-* [Questions and answers](https://github.com/alibaba/arthas/issues?utf8=%E2%9C%93&q=label%3Aquestion-answered+)
+* [FAQ](https://arthas.aliyun.com/doc/en/faq)
 * [Compile and debug/How to contribute](https://github.com/alibaba/arthas/blob/master/CONTRIBUTING.md)
 * [Release Notes](https://github.com/alibaba/arthas/releases)
 
@@ -100,7 +102,7 @@ You can enter its interactive interface by executing `as.sh`, or execute `as.sh 
 
 * https://arthas.aliyun.com/doc/en/dashboard
 
-![dashboard](site/src/site/sphinx/_static/dashboard.png)
+![dashboard](site/docs/.vuepress/public/images/dashboard.png)
 
 #### Thread
 
@@ -182,18 +184,18 @@ public interface Servlet {
 Memory compiler, compiles `.java` files into `.class` files in memory.
 
 ```bash
-mc /tmp/Test.java
+$ mc /tmp/Test.java
 ```
 
-#### redefine
+#### retransform
 
-* https://arthas.aliyun.com/doc/en/redefine
+* https://arthas.aliyun.com/doc/en/retransform
 
-Load the external `*.class` files to re-define the loaded classes in JVM.
+Load the external `*.class` files to retransform/hotswap the loaded classes in JVM.
 
 ```bash
-redefine /tmp/Test.class
-redefine -c 327a647b /tmp/Test.class /tmp/Test\$Inner.class
+retransform /tmp/Test.class
+retransform -c 327a647b /tmp/Test.class /tmp/Test\$Inner.class
 ```
 
 #### sc
@@ -232,6 +234,29 @@ $ sc -d org.springframework.web.context.support.XmlWebApplicationContext
                          +-sun.misc.Launcher$ExtClassLoader@1ddf84b8
  classLoaderHash   25131501
 
+```
+
+
+#### vmtool
+
+* https://arthas.aliyun.com/doc/en/vmtool
+
+Get objects in the heap that are instances of the specified class.
+
+```bash
+$ vmtool --action getInstances --className java.lang.String --limit 10
+@String[][
+    @String[com/taobao/arthas/core/shell/session/Session],
+    @String[com.taobao.arthas.core.shell.session.Session],
+    @String[com/taobao/arthas/core/shell/session/Session],
+    @String[com/taobao/arthas/core/shell/session/Session],
+    @String[com/taobao/arthas/core/shell/session/Session.class],
+    @String[com/taobao/arthas/core/shell/session/Session.class],
+    @String[com/taobao/arthas/core/shell/session/Session.class],
+    @String[com/],
+    @String[java/util/concurrent/ConcurrentHashMap$ValueIterator],
+    @String[java/util/concurrent/locks/LockSupport],
+]
 ```
 
 #### stack
@@ -277,7 +302,7 @@ ts=2018-09-18 10:11:45;thread_name=http-bio-8080-exec-10;id=d9;is_daemon=true;pr
 
 See what is slowing down your method invocation with trace command:
 
-![trace](site/src/site/sphinx/_static/trace.png)
+![trace](site/docs/.vuepress/public/images/trace.png)
 
 #### Watch
 
@@ -299,7 +324,7 @@ ts=2018-09-18 10:26:28;result=@ArrayList[
 
 * https://arthas.aliyun.com/doc/en/monitor
 
-Monitor a specific method invocation statistics, including total number of invocations, average response time, success rate, and every 5 seconds:
+Monitor a specific method invocation statistics, including the total number of invocations, average response time, success rate, and every 5 seconds:
 
 ```bash
 $ monitor -c 5 org.apache.dubbo.demo.provider.DemoServiceImpl sayHello
@@ -364,7 +389,7 @@ $ classloader
 
 * https://arthas.aliyun.com/doc/en/web-console
 
-![web console](site/src/site/sphinx/_static/web-console-local.png)
+![web console](site/docs/.vuepress/public/images/web-console-local.png)
 
 
 #### Profiler/FlameGraph
@@ -378,13 +403,13 @@ Started [cpu] profiling
 
 ```
 $ profiler stop
-profiler output file: /tmp/demo/arthas-output/20191125-135546.svg
+profiler output file: /tmp/demo/arthas-output/20211207-111550.html
 OK
 ```
 
 View profiler results under arthas-output via browser:
 
-![](site/src/site/sphinx/_static/arthas-output-svg.jpg)
+![](site/docs/.vuepress/public/images/arthas-output-svg.jpg)
 
 #### Arthas Spring Boot Starter
 
@@ -392,129 +417,25 @@ View profiler results under arthas-output via browser:
 
 ### Known Users
 
+Arthas has more than 120 registered users, [View All](USERS.md).
+
 Welcome to register the company name in this issue: https://github.com/alibaba/arthas/issues/111 (in order of registration)
 
 ![Alibaba](static/alibaba.png)
 ![Alipay](static/alipay.png)
 ![Aliyun](static/aliyun.png)
 ![Taobao](static/taobao.png)
-![Tmall](static/tmall.png)
-![微医](static/weiyi.png)
-![卓越教育](static/zhuoyuejiaoyu.png)
-![狐狸金服](static/hulijingfu.png)
-![三体云](static/santiyun.png)
-![证大文化](static/zhengdawenhua.png)
-![连连支付](static/lianlianpay.png)
-![Acmedcare+](static/acmedcare.png)
-![好慷](static/homeking365_log.png)
-![来电科技](static/laidian.png)
-![四格互联](static/sigehulian.png)
 ![ICBC](static/icbc.png)
-![陆鹰](static/luying.png)
-![玩友时代](static/wangyoushidai.png)
-![她社区](static/tashequ.png)
-![龙腾出行](static/longtengchuxing.png)
-![foscam](static/foscam.png)
-![二维火](static/2dfire.png)
-![lanxum](static/lanxum_com.png)
-![纳里健康](static/ngarihealth.png)
-![掌门1对1](static/zhangmen.png)
-![offcn](static/offcn.png)
-![sia](static/sia.png)
-![振安资产](static/zhenganzichang.png)
-![菠萝](static/bolo.png)
-![中通快递](static/zto.png)
-![光点科技](static/guangdian.png)
-![广州工程技术职业学院](static/gzvtc.jpg)
-![mstar](static/mstar.png)
-![xwbank](static/xwbank.png)
-![imexue](static/imexue.png)
-![keking](static/keking.png)
-![secoo](static/secoo.jpg)
-![viax](static/viax.png)
-![yanedu](static/yanedu.png)
-![duia](static/duia.png)
-![哈啰出行](static/hellobike.png)
-![hollycrm](static/hollycrm.png)
-![citycloud](static/citycloud.jpg)
-![yidianzixun](static/yidianzixun.png)
-![神州租车](static/zuche.png)
-![天眼查](static/tianyancha.png)
-![商脉云](static/anjianyun.png)
-![三新文化](static/sanxinbook.png)
 ![雪球财经](static/xueqiu.png)
-![百安居](static/bthome.png)
-![安心保险](static/95303.png)
-![杭州源诚科技](static/hzyc.png)
-![91moxie](static/91moxie.png)
-![智慧开源](static/wisdom.png)
-![富佳科技](static/fujias.png)
-![鼎尖软件](static/dingjiansoft.png)
-![广通软件](static/broada.png)
-![九鼎瑞信](static/evercreative.jpg)
-![小米有品](static/xiaomiyoupin.png)
-![欧冶云商](static/ouyeel.png)
-![投投科技](static/toutou.png)
-![饿了么](static/ele.png)
-![58同城](static/58.png)
-![上海浪沙](static/runsa.png)
-![符律科技](static/fhldtech.png)
 ![顺丰科技](static/sf.png)
-![新致软件](static/newtouch.png)
-![北京华宇信息](static/thunisoft.png)
-![太平洋保险](static/cpic.png)
-![旅享网络](static/risingch.png)
-![水滴互联](static/shuidihuzhu.png)
 ![贝壳找房](static/ke.png)
-![嘟嘟牛](static/dodonew.png)
-![云幂信息](static/yunmixinxi.png)
-![随手科技](static/sui.png)
-![妈妈去哪儿](static/mamaqunaer.jpg)
-![云实信息](static/realscloud.png)
-![BBD数联铭品](static/bbdservice.png)
-![伙伴集团](static/zhaoshang800.png)
-![数梦工场](static/dtdream.png)
-![安恒信息](static/dbappsecurity.png)
-![亚信科技](static/asiainfo.png)
-![云舒写](static/yunshuxie.png)
-![微住](static/iweizhu.png)
-![月亮小屋](static/bluemoon.png)
-![大搜车](static/souche.png)
-![今日图书](static/jinritushu.png)
-![竹间智能](static/emotibot.png)
-![数字认证](static/bjca.png)
-![360金融](static/360jinrong.png)
-![安居客](static/anjuke.jpg)
-![qunar](static/qunar.png)
-![ctrip](static/ctrip.png)
-![Tuniu](static/tuniu.png)
-![多点](static/dmall.jpg)
-![转转](static/zhuanzhuan.jpg)
-![金蝶](static/kingdee.jpg)
-![华清飞扬](static/sincetimes.jpg)
-![神奇视角](static/fasterar.jpg)
-![南京昂克软件](static/angke.jpg)
-![网盛生意宝](static/netsun.jpg)
-![北京登云美业网络](static/idengyun.jpg)
-![Holder](static/holder.png)
-![立林科技](static/leelen.png)
-![爱成长](static/aichengzhang.png)
-![嘉云数据](static/clubfactory.png)
-![百草味](static/bcw.png)
-![青岛优米](static/youmi.png)
-![紫光软件](static/unis.png)
-![拓保软件](static/tobosoft.png)
-![海信集团](static/hisense.png)
-![小红唇](static/xiaohongchun.png)
-![上海恺英](static/kaiying.png)
-![上海慧力](static/xiaohuasheng.png)
-![上海喔噻](static/shouqingba.png)
 ![vipkid](static/vipkid.png)
-![宇中科技](static/yuzhong.png)
-![蘑菇财富](static/mogu.jpg)
-![喔趣科技](static/woqu.png)
 ![百度凤巢](static/baidufengchao.png)
-![喜百年供应链科技](static/xbn.png)
+![有赞](static/youzan.png)
+![科大讯飞](static/iflytek.png)
+![智联招聘](static/zhaopin.png)
+![达美盛](static/dms.png)
+
 
 ### Derivative Projects
 
@@ -531,6 +452,7 @@ This project exists, thanks to all the people who contributed.
 
 #### Projects
 
+* [bytekit](https://github.com/alibaba/bytekit) Java Bytecode Kit.
 * [greys-anatomy](https://github.com/oldmanpushcart/greys-anatomy): The Arthas code base has derived from Greys, we thank for the excellent work done by Greys.
 * [termd](https://github.com/alibaba/termd): Arthas's terminal implementation is based on termd, an open source library for writing terminal applications in Java.
 * [crash](https://github.com/crashub/crash): Arthas's text based user interface rendering is based on codes extracted from [here](https://github.com/crashub/crash/tree/1.3.2/shell)

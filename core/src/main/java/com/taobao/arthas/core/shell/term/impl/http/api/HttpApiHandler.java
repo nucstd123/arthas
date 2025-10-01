@@ -2,7 +2,9 @@ package com.taobao.arthas.core.shell.term.impl.http.api;
 
 import com.alibaba.arthas.deps.org.slf4j.Logger;
 import com.alibaba.arthas.deps.org.slf4j.LoggerFactory;
-import com.alibaba.fastjson.JSON;
+import com.alibaba.fastjson2.JSON;
+import com.alibaba.fastjson2.filter.ValueFilter;
+import com.taobao.arthas.common.ArthasConstants;
 import com.taobao.arthas.common.PidUtils;
 import com.taobao.arthas.core.command.model.*;
 import com.taobao.arthas.core.distribution.PackingResultDistributor;
@@ -25,24 +27,21 @@ import com.taobao.arthas.core.shell.system.JobListener;
 import com.taobao.arthas.core.shell.system.impl.InternalCommandManager;
 import com.taobao.arthas.core.shell.term.SignalHandler;
 import com.taobao.arthas.core.shell.term.Term;
+import com.taobao.arthas.core.shell.term.impl.http.session.HttpSession;
+import com.taobao.arthas.core.shell.term.impl.http.session.HttpSessionManager;
 import com.taobao.arthas.core.util.ArthasBanner;
 import com.taobao.arthas.core.util.DateUtils;
-import com.taobao.arthas.core.util.JsonUtils;
 import com.taobao.arthas.core.util.StringUtils;
 import io.netty.buffer.ByteBuf;
-import io.netty.buffer.ByteBufOutputStream;
 import io.netty.buffer.Unpooled;
+import io.netty.channel.ChannelHandlerContext;
 import io.netty.handler.codec.http.*;
 import io.netty.util.CharsetUtil;
 import io.termd.core.function.Function;
 
-import java.io.IOException;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
-import java.util.concurrent.ArrayBlockingQueue;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicInteger;
 
 
 /**
@@ -53,35 +52,22 @@ import java.util.concurrent.atomic.AtomicInteger;
 public class HttpApiHandler {
 
     private static final Logger logger = LoggerFactory.getLogger(HttpApiHandler.class);
+    private static final ValueFilter[] JSON_FILTERS = new ValueFilter[] { new ObjectVOFilter() };
+    private static final String ONETIME_SESSION_KEY = "oneTimeSession";
     public static final int DEFAULT_EXEC_TIMEOUT = 30000;
     private final SessionManager sessionManager;
-    private static HttpApiHandler instance;
     private final InternalCommandManager commandManager;
     private final JobController jobController;
     private final HistoryManager historyManager;
-
-    private int jsonBufferSize = 1024 * 256;
-    private int poolSize = 8;
-    private ArrayBlockingQueue<ByteBuf> byteBufPool = new ArrayBlockingQueue<ByteBuf>(poolSize);
-    private ArrayBlockingQueue<char[]> charsBufPool = new ArrayBlockingQueue<char[]>(poolSize);
-    private ArrayBlockingQueue<byte[]> bytesPool = new ArrayBlockingQueue<byte[]>(poolSize);
 
     public HttpApiHandler(HistoryManager historyManager, SessionManager sessionManager) {
         this.historyManager = historyManager;
         this.sessionManager = sessionManager;
         commandManager = this.sessionManager.getCommandManager();
         jobController = this.sessionManager.getJobController();
-
-        //init buf pool
-        JsonUtils.setSerializeWriterBufferThreshold(jsonBufferSize);
-        for (int i = 0; i < poolSize; i++) {
-            byteBufPool.offer(Unpooled.buffer(jsonBufferSize));
-            charsBufPool.offer(new char[jsonBufferSize]);
-            bytesPool.offer(new byte[jsonBufferSize]);
-        }
     }
 
-    public HttpResponse handle(FullHttpRequest request) throws Exception {
+    public HttpResponse handle(ChannelHandlerContext ctx, FullHttpRequest request) throws Exception {
 
         ApiResponse result;
         String requestBody = null;
@@ -92,7 +78,7 @@ public class HttpApiHandler {
                 requestBody = getBody(request);
                 ApiRequest apiRequest = parseRequest(requestBody);
                 requestId = apiRequest.getRequestId();
-                result = processRequest(apiRequest);
+                result = processRequest(ctx, apiRequest);
             } else {
                 result = createResponse(ApiState.REFUSED, "Unsupported http method: " + method.name());
             }
@@ -105,77 +91,13 @@ public class HttpApiHandler {
         }
         result.setRequestId(requestId);
 
+        byte[] jsonBytes = JSON.toJSONBytes(result, JSON_FILTERS);
 
-        //http response content
-        ByteBuf content = null;
-        //fastjson buf
-        char[] charsBuf = null;
-        byte[] bytesBuf = null;
-
-        try {
-            //apply response content buf first
-            content = byteBufPool.poll(2000, TimeUnit.MILLISECONDS);
-            if (content == null) {
-                throw new ApiException("get response content buf failure");
-            }
-
-            //apply fastjson buf from pool
-            charsBuf = charsBufPool.poll();
-            bytesBuf = bytesPool.poll();
-            if (charsBuf == null || bytesBuf == null) {
-                throw new ApiException("get json buf failure");
-            }
-            JsonUtils.setSerializeWriterBufThreadLocal(charsBuf, bytesBuf);
-
-            //create http response
-            DefaultFullHttpResponse response = new DefaultFullHttpResponse(request.protocolVersion(),
-                    HttpResponseStatus.OK, content.retain());
-            response.headers().set(HttpHeaderNames.CONTENT_TYPE, "application/json; charset=utf-8");
-            writeResult(response, result);
-            return response;
-        } catch (Exception e) {
-            //response is discarded
-            if (content != null) {
-                content.release();
-                byteBufPool.offer(content);
-            }
-            throw e;
-        } finally {
-            //give back json buf to pool
-            JsonUtils.setSerializeWriterBufThreadLocal(null, null);
-            if (charsBuf != null) {
-                charsBufPool.offer(charsBuf);
-            }
-            if (bytesBuf != null) {
-                bytesPool.offer(bytesBuf);
-            }
-        }
-    }
-
-    public void onCompleted(DefaultFullHttpResponse httpResponse) {
-        ByteBuf content = httpResponse.content();
-        content.clear();
-        if (content.capacity() == jsonBufferSize) {
-            if (!byteBufPool.offer(content)) {
-                content.release();
-            }
-        } else {
-            //replace content ByteBuf
-            content.release();
-            if (byteBufPool.remainingCapacity() > 0) {
-                byteBufPool.offer(Unpooled.buffer(jsonBufferSize));
-            }
-        }
-    }
-
-    private void writeResult(DefaultFullHttpResponse response, Object result) throws IOException {
-        ByteBufOutputStream out = new ByteBufOutputStream(response.content());
-        try {
-            JSON.writeJSONString(out, result);
-        } catch (IOException e) {
-            logger.error("write json to response failed", e);
-            throw e;
-        }
+        // create http response
+        DefaultFullHttpResponse response = new DefaultFullHttpResponse(request.protocolVersion(),
+                HttpResponseStatus.OK, Unpooled.wrappedBuffer(jsonBytes));
+        response.headers().set(HttpHeaderNames.CONTENT_TYPE, "application/json; charset=utf-8");
+        return response;
     }
 
     private ApiRequest parseRequest(String requestBody) throws ApiException {
@@ -191,7 +113,7 @@ public class HttpApiHandler {
         }
     }
 
-    private ApiResponse processRequest(ApiRequest apiRequest) {
+    private ApiResponse processRequest(ChannelHandlerContext ctx, ApiRequest apiRequest) {
 
         String actionStr = apiRequest.getAction();
         try {
@@ -224,6 +146,22 @@ public class HttpApiHandler {
                     throw new ApiException("session not found: " + sessionId);
                 }
                 sessionManager.updateAccessTime(session);
+            }
+
+            // 标记所谓的一次性session
+            if (session == null) {
+                session = sessionManager.createSession();
+                session.put(ONETIME_SESSION_KEY, new Object());
+            }
+
+            // 请求到达这里，如果有需要鉴权，则已经在前面的handler里处理过了
+            // 如果有鉴权取到的 Subject，则传递到 arthas的session里
+            HttpSession httpSession = HttpSessionManager.getHttpSessionFromContext(ctx);
+            if (httpSession != null) {
+                Object subject = httpSession.getAttribute(ArthasConstants.SUBJECT_KEY);
+                if (subject != null) {
+                    session.put(ArthasConstants.SUBJECT_KEY, subject);
+                }
             }
 
             //dispatch requests
@@ -286,8 +224,9 @@ public class HttpApiHandler {
             welcomeModel.setVersion(ArthasBanner.version());
             welcomeModel.setWiki(ArthasBanner.wiki());
             welcomeModel.setTutorials(ArthasBanner.tutorials());
+            welcomeModel.setMainClass(PidUtils.mainClass());
             welcomeModel.setPid(PidUtils.currentPid());
-            welcomeModel.setTime(DateUtils.getCurrentDate());
+            welcomeModel.setTime(DateUtils.getCurrentDateTime());
             resultDistributor.appendResult(welcomeModel);
 
             //allow input
@@ -321,7 +260,10 @@ public class HttpApiHandler {
         ResultConsumer resultConsumer = new ResultConsumerImpl();
         //disable input and interrupt
         resultConsumer.appendResult(new InputStatusModel(InputStatus.DISABLED));
-        session.getResultDistributor().addConsumer(resultConsumer);
+        SharingResultDistributor resultDistributor = session.getResultDistributor();
+        if (resultDistributor != null) {
+            resultDistributor.addConsumer(resultConsumer);
+        }
 
         ApiResponse response = new ApiResponse();
         response.setSessionId(session.getSessionId())
@@ -360,9 +302,8 @@ public class HttpApiHandler {
      */
     private ApiResponse processExecRequest(ApiRequest apiRequest, Session session) {
         boolean oneTimeAccess = false;
-        if (session == null) {
+        if (session.get(ONETIME_SESSION_KEY) != null) {
             oneTimeAccess = true;
-            session = sessionManager.createSession();
         }
 
         try {
@@ -486,7 +427,10 @@ public class HttpApiHandler {
             //add command before exec job
             CommandRequestModel commandRequestModel = new CommandRequestModel(commandLine, response.getState());
             commandRequestModel.setJobId(job.id());
-            session.getResultDistributor().appendResult(commandRequestModel);
+            SharingResultDistributor resultDistributor = session.getResultDistributor();
+            if (resultDistributor != null) {
+                resultDistributor.appendResult(commandRequestModel);
+            }
             session.setForegroundJob(job);
             updateSessionInputStatus(session, InputStatus.ALLOW_INTERRUPT);
 
@@ -534,7 +478,11 @@ public class HttpApiHandler {
         if (StringUtils.isBlank(consumerId)) {
             throw new ApiException("'consumerId' is required");
         }
-        ResultConsumer consumer = session.getResultDistributor().getConsumer(consumerId);
+        ResultConsumer consumer = null;
+        SharingResultDistributor resultDistributor = session.getResultDistributor();
+        if (resultDistributor != null) {
+            consumer = resultDistributor.getConsumer(consumerId);
+        }
         if (consumer == null) {
             throw new ApiException("consumer not found: " + consumerId);
         }
@@ -576,7 +524,6 @@ public class HttpApiHandler {
 
     private Job createJob(String line, Session session, ResultDistributor resultDistributor) {
         historyManager.addHistory(line);
-        historyManager.saveHistory();
         return createJob(CliTokens.tokenize(line), session, resultDistributor);
     }
 
@@ -630,7 +577,7 @@ public class HttpApiHandler {
         }
     }
 
-    private class ApiTerm implements Term {
+    private static class ApiTerm implements Term {
 
         private Session session;
 

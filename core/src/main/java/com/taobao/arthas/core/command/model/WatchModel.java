@@ -1,6 +1,6 @@
 package com.taobao.arthas.core.command.model;
 
-import java.util.Date;
+import java.time.LocalDateTime;
 
 /**
  * Watch command result model
@@ -9,12 +9,14 @@ import java.util.Date;
  */
 public class WatchModel extends ResultModel {
 
-    private Date ts;
+    private LocalDateTime ts;
     private double cost;
-    private Object value;
+    private ObjectVO value;
 
-    private Integer expand;
     private Integer sizeLimit;
+    private String className;
+    private String methodName;
+    private String accessPoint;
 
     public WatchModel() {
     }
@@ -24,11 +26,11 @@ public class WatchModel extends ResultModel {
         return "watch";
     }
 
-    public Date getTs() {
+    public LocalDateTime getTs() {
         return ts;
     }
 
-    public void setTs(Date ts) {
+    public void setTs(LocalDateTime ts) {
         this.ts = ts;
     }
 
@@ -36,7 +38,7 @@ public class WatchModel extends ResultModel {
         return cost;
     }
 
-    public Object getValue() {
+    public ObjectVO getValue() {
         return value;
     }
 
@@ -44,23 +46,39 @@ public class WatchModel extends ResultModel {
         this.cost = cost;
     }
 
-    public void setValue(Object value) {
+    public void setValue(ObjectVO value) {
         this.value = value;
-    }
-
-    public void setExpand(Integer expand) {
-        this.expand = expand;
     }
 
     public void setSizeLimit(Integer sizeLimit) {
         this.sizeLimit = sizeLimit;
     }
 
-    public Integer getExpand() {
-        return expand;
-    }
-
     public Integer getSizeLimit() {
         return sizeLimit;
+    }
+
+    public String getClassName() {
+        return className;
+    }
+
+    public void setClassName(String className) {
+        this.className = className;
+    }
+
+    public String getMethodName() {
+        return methodName;
+    }
+
+    public void setMethodName(String methodName) {
+        this.methodName = methodName;
+    }
+
+    public String getAccessPoint() {
+        return accessPoint;
+    }
+
+    public void setAccessPoint(String accessPoint) {
+        this.accessPoint = accessPoint;
     }
 }

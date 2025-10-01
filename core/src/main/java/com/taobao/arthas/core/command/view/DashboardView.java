@@ -4,12 +4,11 @@ import com.taobao.arthas.core.command.model.*;
 import com.taobao.arthas.core.shell.command.CommandProcess;
 import com.taobao.text.Color;
 import com.taobao.text.Decoration;
-import com.taobao.text.Style;
 import com.taobao.text.ui.RowElement;
 import com.taobao.text.ui.TableElement;
 import com.taobao.text.util.RenderUtil;
 
-import java.lang.management.MemoryUsage;
+import java.util.Date;
 import java.util.List;
 import java.util.Map;
 
@@ -28,79 +27,81 @@ public class DashboardView extends ResultView<DashboardModel> {
         // 上半部分放thread top。下半部分再切分为田字格，其中上面两格放memory, gc的信息。下面两格放tomcat,
         // runtime的信息
         int totalHeight = height - 1;
-        int threadTopHeight = totalHeight / 2;
+        int threadTopHeight;
+        if (totalHeight <= 24) {
+            //总高度较小时取1/2
+            threadTopHeight = totalHeight / 2;
+        } else {
+            //总高度较大时取1/3，但不少于上面的值(24/2=12)
+            threadTopHeight = totalHeight / 3;
+            if (threadTopHeight < 12) {
+                threadTopHeight = 12;
+            }
+        }
         int lowerHalf = totalHeight - threadTopHeight;
 
-        int runtimeInfoHeight = lowerHalf / 2;
-        int heapInfoHeight = lowerHalf - runtimeInfoHeight;
+        //Memory至少保留8行, 显示metaspace信息
+        int memoryInfoHeight = lowerHalf / 2;
+        if (memoryInfoHeight < 8) {
+            memoryInfoHeight = Math.min(8, lowerHalf);
+        }
+
+        //runtime
+        TableElement runtimeInfoTable = drawRuntimeInfo(result.getRuntimeInfo());
+        //tomcat
+        TableElement tomcatInfoTable = drawTomcatInfo(result.getTomcatInfo());
+        int runtimeInfoHeight = Math.max(runtimeInfoTable.getRows().size(), tomcatInfoTable == null ? 0 : tomcatInfoTable.getRows().size());
+        if (runtimeInfoHeight < lowerHalf - memoryInfoHeight) {
+            //如果runtimeInfo高度有剩余，则增大MemoryInfo的高度
+            memoryInfoHeight = lowerHalf - runtimeInfoHeight;
+        } else {
+            runtimeInfoHeight = lowerHalf - memoryInfoHeight;
+        }
+
+        //如果MemoryInfo高度有剩余，则增大ThreadHeight
+        int maxMemoryInfoHeight = getMemoryInfoHeight(result.getMemoryInfo());
+        memoryInfoHeight = Math.min(memoryInfoHeight, maxMemoryInfoHeight);
+        threadTopHeight = totalHeight - memoryInfoHeight - runtimeInfoHeight;
 
         String threadInfo = ViewRenderUtil.drawThreadInfo(result.getThreads(), width, threadTopHeight);
-        String memoryAndGc = drawMemoryInfoAndGcInfo(result.getMemoryInfo(), result.getGcInfos(), width, runtimeInfoHeight);
-        String runTimeAndTomcat = drawRuntimeInfoAndTomcatInfo(result.getRuntimeInfo(), result.getTomcatInfo(), width, heapInfoHeight);
+        String memoryAndGc = drawMemoryInfoAndGcInfo(result.getMemoryInfo(), result.getGcInfos(), width, memoryInfoHeight);
+        String runTimeAndTomcat = drawRuntimeInfoAndTomcatInfo(runtimeInfoTable, tomcatInfoTable, width, runtimeInfoHeight);
 
         process.write(threadInfo + memoryAndGc + runTimeAndTomcat);
     }
 
     static String drawMemoryInfoAndGcInfo(Map<String, List<MemoryEntryVO>> memoryInfo, List<GcInfoVO> gcInfos, int width, int height) {
         TableElement table = new TableElement(1, 1);
-
-        TableElement memoryInfoTable = new TableElement(3, 1, 1, 1, 1).rightCellPadding(1);
-        memoryInfoTable.add(new RowElement().style(Decoration.bold.fg(Color.black).bg(Color.white)).add("Memory",
-                "used", "total", "max", "usage"));
-
-        drawMemoryInfo(memoryInfoTable, memoryInfo);
-
-        TableElement gcInfoTable = new TableElement(1, 1).rightCellPadding(1);
-        gcInfoTable.add(new RowElement().style(Decoration.bold.fg(Color.black).bg(Color.white)).add("GC", ""));
-        drawGcInfo(gcInfoTable, gcInfos);
-
+        TableElement memoryInfoTable = MemoryView.drawMemoryInfo(memoryInfo);
+        TableElement gcInfoTable = drawGcInfo(gcInfos);
         table.row(memoryInfoTable, gcInfoTable);
         return RenderUtil.render(table, width, height);
     }
 
-    private static void drawMemoryInfo(TableElement table, Map<String, List<MemoryEntryVO>> memoryInfo) {
-        List<MemoryEntryVO> heapMemoryEntries = memoryInfo.get(MemoryEntryVO.TYPE_HEAP);
-        //heap memory
-        for (MemoryEntryVO memoryEntryVO : heapMemoryEntries) {
-            if (MemoryEntryVO.TYPE_HEAP.equals(memoryEntryVO.getName())) {
-                new MemoryEntry(memoryEntryVO).addTableRow(table, Decoration.bold.bold());
-            } else {
-                new MemoryEntry(memoryEntryVO).addTableRow(table);
-            }
+    private static int getMemoryInfoHeight(Map<String, List<MemoryEntryVO>> memoryInfo) {
+        int height = 1;
+        for (List<MemoryEntryVO> memoryEntryVOS : memoryInfo.values()) {
+            height += memoryEntryVOS.size();
         }
-
-        //non-heap memory
-        List<MemoryEntryVO> nonheapMemoryEntries = memoryInfo.get(MemoryEntryVO.TYPE_NON_HEAP);
-        for (MemoryEntryVO memoryEntryVO : nonheapMemoryEntries) {
-            if (MemoryEntryVO.TYPE_NON_HEAP.equals(memoryEntryVO.getName())) {
-                new MemoryEntry(memoryEntryVO).addTableRow(table, Decoration.bold.bold());
-            } else {
-                new MemoryEntry(memoryEntryVO).addTableRow(table);
-            }
-        }
-
-        //buffer-pool
-        List<MemoryEntryVO> bufferPoolMemoryEntries = memoryInfo.get(MemoryEntryVO.TYPE_BUFFER_POOL);
-        for (MemoryEntryVO memoryEntryVO : bufferPoolMemoryEntries) {
-            new MemoryEntry(memoryEntryVO).addTableRow(table);
-        }
+        return height;
     }
 
-    private static void drawGcInfo(TableElement table, List<GcInfoVO> gcInfos) {
+    private static TableElement drawGcInfo(List<GcInfoVO> gcInfos) {
+        TableElement table = new TableElement(1, 1).rightCellPadding(1);
+        table.add(new RowElement().style(Decoration.bold.fg(Color.black).bg(Color.white)).add("GC", ""));
         for (GcInfoVO gcInfo : gcInfos) {
             table.add(new RowElement().style(Decoration.bold.bold()).add("gc." + gcInfo.getName() + ".count",
                     "" + gcInfo.getCollectionCount()));
             table.row("gc." + gcInfo.getName() + ".time(ms)", "" + gcInfo.getCollectionTime());
         }
+        return table;
     }
 
-    String drawRuntimeInfoAndTomcatInfo(RuntimeInfoVO runtimeInfo, TomcatInfoVO tomcatInfo, int width, int height) {
+    String drawRuntimeInfoAndTomcatInfo(TableElement runtimeInfoTable, TableElement tomcatInfoTable, int width, int height) {
+        if (height <= 0) {
+            return "";
+        }
         TableElement resultTable = new TableElement(1, 1);
-        //runtime
-        TableElement runtimeInfoTable = drawRuntimeInfo(runtimeInfo);
-        //tomcat
-        TableElement tomcatInfoTable = drawTomcatInfo(tomcatInfo);
-
         if (tomcatInfoTable != null) {
             resultTable.row(runtimeInfoTable, tomcatInfoTable);
         } else {
@@ -119,7 +120,7 @@ public class DashboardView extends ResultView<DashboardModel> {
         table.row("java.home", runtimeInfo.getJavaHome());
         table.row("systemload.average", String.format("%.2f", runtimeInfo.getSystemLoadAverage()));
         table.row("processors", "" + runtimeInfo.getProcessors());
-        table.row("uptime", "" + runtimeInfo.getUptime() + "s");
+        table.row("timestamp/uptime", new Date(runtimeInfo.getTimestamp()).toString() + "/" + runtimeInfo.getUptime() + "s");
         return table;
     }
 
@@ -165,61 +166,5 @@ public class DashboardView extends ResultView<DashboardModel> {
             }
         }
         return table;
-    }
-
-    static class MemoryEntry {
-        String name;
-        long used;
-        long total;
-        long max;
-
-        int unit;
-        String unitStr;
-
-        public MemoryEntry(String name, long used, long total, long max) {
-            this.name = name;
-            this.used = used;
-            this.total = total;
-            this.max = max;
-
-            unitStr = "K";
-            unit = 1024;
-            if (used / 1024 / 1024 > 0) {
-                unitStr = "M";
-                unit = 1024 * 1024;
-            }
-        }
-
-        public MemoryEntry(String name, MemoryUsage usage) {
-            this(name, usage.getUsed(), usage.getCommitted(), usage.getMax());
-        }
-
-        public MemoryEntry(MemoryEntryVO memoryEntryVO) {
-            this(memoryEntryVO.getName(), memoryEntryVO.getUsed(), memoryEntryVO.getTotal(), memoryEntryVO.getMax());
-        }
-
-        private String format(long value) {
-            String valueStr = "-";
-            if (value == -1) {
-                return "-1";
-            }
-            if (value != Long.MIN_VALUE) {
-                valueStr = value / unit + unitStr;
-            }
-            return valueStr;
-        }
-
-        public void addTableRow(TableElement table) {
-            double usage = used / (double) (max == -1 || max == Long.MIN_VALUE ? total : max) * 100;
-
-            table.row(name, format(used), format(total), format(max), String.format("%.2f%%", usage));
-        }
-
-        public void addTableRow(TableElement table, Style.Composite style) {
-            double usage = used / (double) (max == -1 || max == Long.MIN_VALUE ? total : max) * 100;
-
-            table.add(new RowElement().style(style).add(name, format(used), format(total), format(max),
-                    String.format("%.2f%%", usage)));
-        }
     }
 }

@@ -9,10 +9,7 @@ import com.taobao.arthas.core.advisor.ArthasMethod;
 import com.taobao.arthas.core.command.Constants;
 import com.taobao.arthas.core.command.express.ExpressException;
 import com.taobao.arthas.core.command.express.ExpressFactory;
-import com.taobao.arthas.core.command.model.MessageModel;
-import com.taobao.arthas.core.command.model.RowAffectModel;
-import com.taobao.arthas.core.command.model.TimeFragmentVO;
-import com.taobao.arthas.core.command.model.TimeTunnelModel;
+import com.taobao.arthas.core.command.model.*;
 import com.taobao.arthas.core.shell.command.CommandProcess;
 import com.taobao.arthas.core.shell.handlers.command.CommandInterruptHandler;
 import com.taobao.arthas.core.shell.handlers.shell.QExitHandler;
@@ -21,14 +18,10 @@ import com.taobao.arthas.core.util.SearchUtils;
 import com.taobao.arthas.core.util.StringUtils;
 import com.taobao.arthas.core.util.affect.RowAffect;
 import com.taobao.arthas.core.util.matcher.Matcher;
-import com.taobao.middleware.cli.annotations.Description;
-import com.taobao.middleware.cli.annotations.Name;
-import com.taobao.middleware.cli.annotations.Option;
-import com.taobao.middleware.cli.annotations.Summary;
-import com.taobao.middleware.cli.annotations.Argument;
+import com.taobao.middleware.cli.annotations.*;
 
+import java.time.LocalDateTime;
 import java.util.ArrayList;
-import java.util.Date;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -175,7 +168,7 @@ public class TimeTunnelCommand extends EnhancerCommand {
     }
 
     @Option(shortName = "n", longName = "limits")
-    @Description("Threshold of execution times")
+    @Description("Threshold of execution times, default value 100")
     public void setNumberOfLimit(int numberOfLimit) {
         this.numberOfLimit = numberOfLimit;
     }
@@ -214,13 +207,16 @@ public class TimeTunnelCommand extends EnhancerCommand {
         return numberOfLimit;
     }
 
-
     public int getReplayTimes() {
         return replayTimes;
     }
 
     public long getReplayInterval() {
         return replayInterval;
+    }
+
+    public Integer getExpand() {
+        return expand;
     }
 
     private boolean hasWatchExpress() {
@@ -306,6 +302,14 @@ public class TimeTunnelCommand extends EnhancerCommand {
     }
 
     @Override
+    protected Matcher getClassNameExcludeMatcher() {
+        if (classNameExcludeMatcher == null && getExcludeClassPattern() != null) {
+            classNameExcludeMatcher = SearchUtils.classNameMatcher(getExcludeClassPattern(), isRegEx());
+        }
+        return classNameExcludeMatcher;
+    }
+
+    @Override
     protected Matcher getMethodNameMatcher() {
         if (methodNameMatcher == null) {
             methodNameMatcher = SearchUtils.classNameMatcher(getMethodPattern(), isRegEx());
@@ -328,7 +332,7 @@ public class TimeTunnelCommand extends EnhancerCommand {
                 return;
             }
 
-            TimeFragmentVO timeFragmentVO = createTimeFragmentVO(index, tf);
+            TimeFragmentVO timeFragmentVO = createTimeFragmentVO(index, tf, expand);
             TimeTunnelModel timeTunnelModel = new TimeTunnelModel()
                     .setTimeFragment(timeFragmentVO)
                     .setExpand(expand)
@@ -354,9 +358,10 @@ public class TimeTunnelCommand extends EnhancerCommand {
             }
 
             Advice advice = tf.getAdvice();
-            Object value = ExpressFactory.threadLocalExpress(advice).get(watchExpress);
+
+			Object value = ExpressFactory.unpooledExpress(advice.getLoader()).bind(advice).get(watchExpress);
             TimeTunnelModel timeTunnelModel = new TimeTunnelModel()
-                    .setWatchValue(value)
+                    .setWatchValue(new ObjectVO(value, expand))
                     .setExpand(expand)
                     .setSizeLimit(sizeLimit);
             process.appendResult(timeTunnelModel);
@@ -389,10 +394,10 @@ public class TimeTunnelCommand extends EnhancerCommand {
 
             if (hasWatchExpress()) {
                 // 执行watchExpress
-                Map<Integer, Object> searchResults = new LinkedHashMap<Integer, Object>();
+                Map<Integer, ObjectVO> searchResults = new LinkedHashMap<Integer, ObjectVO>();
                 for (Map.Entry<Integer, TimeFragment> entry : matchingTimeSegmentMap.entrySet()) {
                     Object value = ExpressFactory.threadLocalExpress(entry.getValue().getAdvice()).get(watchExpress);
-                    searchResults.put(entry.getKey(), value);
+                    searchResults.put(entry.getKey(), new ObjectVO(value, expand));
                 }
 
                 TimeTunnelModel timeTunnelModel = new TimeTunnelModel()
@@ -447,12 +452,12 @@ public class TimeTunnelCommand extends EnhancerCommand {
     private List<TimeFragmentVO> createTimeTunnelVOList(Map<Integer, TimeFragment> timeFragmentMap) {
         List<TimeFragmentVO> timeFragmentList = new ArrayList<TimeFragmentVO>(timeFragmentMap.size());
         for (Map.Entry<Integer, TimeFragment> entry : timeFragmentMap.entrySet()) {
-            timeFragmentList.add(createTimeFragmentVO(entry.getKey(), entry.getValue()));
+            timeFragmentList.add(createTimeFragmentVO(entry.getKey(), entry.getValue(), expand));
         }
         return timeFragmentList;
     }
 
-    public static TimeFragmentVO createTimeFragmentVO(Integer index, TimeFragment tf) {
+    public static TimeFragmentVO createTimeFragmentVO(Integer index, TimeFragment tf, Integer expand) {
         Advice advice = tf.getAdvice();
         String object = advice.getTarget() == null
                 ? "NULL"
@@ -462,11 +467,11 @@ public class TimeTunnelCommand extends EnhancerCommand {
                 .setIndex(index)
                 .setTimestamp(tf.getGmtCreate())
                 .setCost(tf.getCost())
-                .setParams(advice.getParams())
+                .setParams(ObjectVO.array(advice.getParams(), expand))
                 .setReturn(advice.isAfterReturning())
-                .setReturnObj(advice.getReturnObj())
+                .setReturnObj(new ObjectVO(advice.getReturnObj(), expand))
                 .setThrow(advice.isAfterThrowing())
-                .setThrowExp(advice.getThrowExp())
+                .setThrowExp(new ObjectVO(advice.getThrowExp(), expand))
                 .setObject(object)
                 .setClassName(advice.getClazz().getName())
                 .setMethodName(advice.getMethod().getName());
@@ -499,8 +504,8 @@ public class TimeTunnelCommand extends EnhancerCommand {
                 long beginTime = System.nanoTime();
 
                 //copy from tt record
-                TimeFragmentVO replayResult = createTimeFragmentVO(index, tf);
-                replayResult.setTimestamp(new Date())
+                TimeFragmentVO replayResult = createTimeFragmentVO(index, tf, expand);
+                replayResult.setTimestamp(LocalDateTime.now())
                         .setCost(0)
                         .setReturn(false)
                         .setReturnObj(null)
@@ -513,13 +518,13 @@ public class TimeTunnelCommand extends EnhancerCommand {
                     double cost = (System.nanoTime() - beginTime) / 1000000.0;
                     replayResult.setCost(cost)
                             .setReturn(true)
-                            .setReturnObj(returnObj);
+                            .setReturnObj(new ObjectVO(returnObj, expand));
                 } catch (Throwable t) {
                     //throw exp
                     double cost = (System.nanoTime() - beginTime) / 1000000.0;
                     replayResult.setCost(cost)
                             .setThrow(true)
-                            .setThrowExp(t);
+                            .setThrowExp(new ObjectVO(t, expand));
                 }
 
                 TimeTunnelModel timeTunnelModel = new TimeTunnelModel()

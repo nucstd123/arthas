@@ -17,7 +17,6 @@ import java.util.Map;
 
 import static com.taobao.text.ui.Element.label;
 import static javax.management.MBeanOperationInfo.*;
-import static javax.management.MBeanOperationInfo.UNKNOWN;
 
 /**
  * View of 'mbean' command
@@ -204,7 +203,7 @@ public class MBeanView extends ResultView<MBeanModel> {
             table.row(new LabelElement(title).style(Decoration.bold.fg(Color.yellow)));
             for (String fieldName : fieldNames) {
                 Object fieldValue = descriptor.getFieldValue(fieldName);
-                table.row(fieldName, fieldValue.toString());
+                table.row(fieldName, fieldValue == null ? "" : fieldValue.toString());
             }
         }
     }
